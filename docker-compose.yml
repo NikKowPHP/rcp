@@ -19,6 +19,7 @@ services:
     # This allows the container to communicate with your display server.
     # The ':ro' makes it read-only for better security.
     volumes:
+      - ./files:/app/files
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
 
     # Optional: If you need to access files from your host machine inside the app,
