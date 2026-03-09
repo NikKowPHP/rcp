@@ -1,29 +1,30 @@
-version: "3.8"
-
 services:
   grafik-app:
-    # Tell Docker Compose to build the image from the Dockerfile in the current directory '.'
-    build: .
-
-    # Set a custom container name for easy identification
+    ipc: host
+    build:
+      context: .
+      args:
+        - PROXY_URL=http://172.16.2.254:3128
     container_name: grafik_rcp_container
 
-    # --- X11 GUI Forwarding Configuration ---
-    # This section is critical for making the GUI work.
-
-    # Share the host's display environment variable with the container
+    # --- Proxy and GUI Environment Variables ---
     environment:
-      - DISPLAY=$DISPLAY
+      - http_proxy=http://172.16.2.254:3128
+      - https_proxy=http://172.16.2.254:3128
+      - no_proxy=localhost,127.0.0.1
+      # Dynamically pass host variables
+      - DISPLAY=${DISPLAY}
+      - WAYLAND_DISPLAY=${WAYLAND_DISPLAY}
+      - XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR}
+      - QT_X11_NO_MITSHM=1
 
-    # Mount the X11 socket from the host into the container.
-    # This allows the container to communicate with your display server.
-    # The ':ro' makes it read-only for better security.
+    # --- Volumes for Persistence and Display Sockets ---
     volumes:
       - ./files:/app/files
       - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      # Map the exact Wayland socket path from your host
+      - ${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}:${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY}:ro
 
-    # Optional: If you need to access files from your host machine inside the app,
-    # you can mount a shared directory.
-    # volumes:
-    #   - /tmp/.X11-unix:/tmp/.X11-unix:ro
-    #   - ./shared_data:/app/data # Maps a local 'shared_data' folder to '/app/data' inside the container
+    # CRITICAL: Match your host user exactly. 
+    # If using Fish, ensure you run: set -x UID (id -u); set -x GID (id -g) before up
+    user: "${UID:-1000}:${GID:-1000}"

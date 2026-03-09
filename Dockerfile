@@ -1,26 +1,34 @@
 # Use a 64-bit Ubuntu image as the base
 FROM ubuntu:18.04
 
+# --- PROXY CONFIGURATION ---
+ARG PROXY_URL="http://172.16.2.254:3128"
+ENV http_proxy=$PROXY_URL
+ENV https_proxy=$PROXY_URL
+ENV no_proxy="localhost,127.0.0.1"
+
+# Force APT to use the proxy explicitly
+RUN echo "Acquire::http::Proxy \"$PROXY_URL\";" > /etc/apt/apt.conf.d/99proxy && \
+    echo "Acquire::https::Proxy \"$PROXY_URL\";" >> /etc/apt/apt.conf.d/99proxy
+
 # Set a working directory inside the container
 WORKDIR /app
-
-# Avoid prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# --- ENABLE 32-BIT ARCHITECTURE AND INSTALL 32-BIT LIBRARIES ---
+# Force GTK to use X11 instead of trying Wayland natively, 
+# which prevents crashes in older 32-bit toolkits on Wayland hosts.
+ENV GDK_BACKEND=x11
 
-# 1. Add the i386 (32-bit) architecture
-RUN dpkg --add-architecture i386
+# --- ENABLE 32-BIT ARCHITECTURE ---
+RUN dpkg --add-architecture i386 && apt-get update
 
-# 2. Update package lists for the standard 18.04 repos
-RUN apt-get update
-
-# 3. Add the Ubuntu 16.04 (Xenial) repository to find the old libpng12 package
-RUN echo "deb http://security.ubuntu.com/ubuntu xenial-security main" > /etc/apt/sources.list.d/xenial-security.list && \
+# Add the Ubuntu 16.04 (Xenial) repository for libpng12
+RUN echo "deb http://security.ubuntu.com/ubuntu xenial-security main universe" > /etc/apt/sources.list.d/xenial-security.list && \
     apt-get update
 
-# 4. Install all required 32-bit libraries, including the one from the old repo.
-#    Note the ":i386" suffix on each package name.
+# --- INSTALL 32-BIT LIBRARIES AND GTK MODULES ---
+# Added fonts-liberation, dbus, and core X extensions to prevent "Invalid memory access" 
+# when the GUI toolkit tries to render text or initialize windows.
 RUN apt-get install -y --no-install-recommends \
     libc6:i386 \
     libstdc++6:i386 \
@@ -32,23 +40,27 @@ RUN apt-get install -y --no-install-recommends \
     libexpat1:i386 \
     libpng12-0:i386 \
     libbz2-1.0:i386 \
+    libcanberra-gtk-module:i386 \
+    libcanberra-gtk3-module:i386 \
+    libatk-bridge2.0-0:i386 \
+    libxss1:i386 \
+    libsm6:i386 \
+    libice6:i386 \
+    libxext6:i386 \
+    libxrender1:i386 \
+    libx11-xcb1:i386 \
+    dbus-x11 \
+    fonts-liberation \
+    adwaita-icon-theme-full \
     && rm -rf /var/lib/apt/lists/*
 
-# --- FIX for shared libraries ---
-# The application requires older versions of some libraries.
-# We create symbolic links from the expected names to the available libraries.
-# NOTE: The target for libexpat.so.1 is in /lib/, not /usr/lib/
-RUN ln -s /usr/lib/i386-linux-gnu/libnotify.so.4 /usr/lib/i386-linux-gnu/libnotify.so.1
-RUN ln -s /lib/i386-linux-gnu/libexpat.so.1 /lib/i386-linux-gnu/libexpat.so.0
-
-# Rebuild the dynamic linker's cache to recognize the new links
+# --- SHARED LIBRARY LINKS ---
+RUN ln -s /usr/lib/i386-linux-gnu/libnotify.so.4 /usr/lib/i386-linux-gnu/libnotify.so.1 || true
+RUN ln -s /lib/i386-linux-gnu/libexpat.so.1 /lib/i386-linux-gnu/libexpat.so.0 || true
 RUN ldconfig
 
-# Copy the executable file into the container
+# Copy and prepare the executable
 COPY GrafikRCP /app/GrafikRCP
-
-# Ensure the file is executable
 RUN chmod +x /app/GrafikRCP
 
-# Set the command to run when the container starts
 CMD ["./GrafikRCP"]
